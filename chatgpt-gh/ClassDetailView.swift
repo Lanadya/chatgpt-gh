@@ -17,29 +17,11 @@ struct ClassDetailView: View {
                 .font(.largeTitle)
                 .bold()
 
-            // Raum
-            if let room = cellContent.room {
-                Text("Raum: \(room)")
+            // freier Eintrag
+            if let freeInput = cellContent.freeInput {
+                Text("Raum: \(freeInput)")
                     .font(.title2)
             }
-
-            // Fach
-            if let subject = cellContent.subject {
-                Text("Fach: \(subject)")
-                    .font(.title2)
-            }
-
-            // Klassenbuch-Status
-            if cellContent.isSwitchOn {
-                Text("Klassenbuch mitbringen")
-                    .font(.headline)
-                    .foregroundColor(.green)
-            } else {
-                Text("Kein Klassenbuch erforderlich")
-                    .font(.headline)
-                    .foregroundColor(.red)
-            }
-
             Spacer()
         }
         .padding()

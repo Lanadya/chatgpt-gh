@@ -8,16 +8,12 @@
 import SwiftUI
 
 struct CellContent {
-    var className: String?
-    var room: String?
-    var subject: String?
-    var isSwitchOn: Bool
+    let className: String?
+    let freeInput: String?
 }
 
 // Beispiel für Preview
 let exampleCellContent = CellContent(
     className: "1A",
-    room: "101",
-    subject: "Mathematik",
-    isSwitchOn: true
+    freeInput: "KB Verkürzer3"
 )

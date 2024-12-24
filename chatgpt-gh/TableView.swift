@@ -1,12 +1,4 @@
 
-
-//
-//  TableView.swift
-//  chatgpt-gh
-//
-//  Created by Nina Klee on 20.11.24.
-//
-
 import SwiftUI
 
 struct TableView: View {
@@ -15,66 +7,95 @@ struct TableView: View {
     let weekdays: [String] = ["Mo", "Di", "Mi", "Do", "Fr"]
 
     @State private var tableData: [[CellContent?]] = Array(
-        repeating: Array(repeating: nil, count: 5), // 5 Spalten
-        count: 12 // 12 Zeilen
+        repeating: Array(repeating: nil, count: 5),
+        count: 12
     )
+
     @State private var showModal: Bool = false
     @State private var selectedRow: Int = 0
     @State private var selectedColumn: Int = 0
     @State private var showInfo: Bool = false
     @State private var showEditingView: Bool = false
-    @State private var showDetailView: Bool = false // Steuert das Öffnen der ClassDetailView
-    @State private var selectedCellContent: CellContent? = nil // Speichert die Zelleninformationen
+    @State private var showDetailView: Bool = false
+    @State private var selectedCellContent: CellContent? = nil
+    @State private var keyboardHeight: CGFloat = 0
+    @State private var activeSheet: ActiveSheet? = nil
+    @FocusState private var isInputActive: Bool
 
-    
+    enum ActiveSheet: Identifiable {
+        case modal
+        case editing
+        case detail
+
+        var id: String {
+            switch self {
+            case .modal: return "modal"
+            case .editing: return "editing"
+            case .detail: return "detail"
+            }
+        }
+    }
+
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Überschrift mit Info-Button
                     headerSection()
-
-                    // Tabellenbereich
                     gridSection()
 
-                    // Bearbeiten-Schaltfläche
-                    Button(action: {
-                        showEditingView = true // Navigation zur Bearbeitungsseite
-                    }) {
-                        Text("Bearbeiten")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity) // Button über gesamte Breite
-                            .padding() // Innenabstand
-                            .background(Color.blue) // Hintergrundfarbe
-                            .foregroundColor(.white) // Schriftfarbe
-                            .cornerRadius(10) // Abgerundete Ecken
-                    }
-                    .padding(.top, 20) // Abstand nach oben
-                    .padding([.leading, .trailing], 15) // Abstand zu den Seiten
+
+                    .padding(.top, 20)
+                    .padding([.leading, .trailing], 15)
                 }
                 .padding([.leading, .trailing], 15)
+            } .onAppear {
+                // Beobachte Tastaturereignisse
+                NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { notification in
+                    if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                        keyboardHeight = keyboardFrame.height
+                    }
+                }
+
+                NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { _ in
+                    keyboardHeight = 0
+                }
             }
-        
-        .sheet(isPresented: $showModal) {
-            modalSheet() // Öffnet den ModalView für das Anlegen einer neuen Klasse
-        }
-        .sheet(isPresented: $showEditingView) {
-            EditableTableView(tableData: $tableData, rows: rows, columns: columns) // Öffnet die Bearbeitungsansicht
-        }
-        .sheet(isPresented: $showDetailView) {
-            if let cellContent = selectedCellContent {
-                ClassDetailView(cellContent: cellContent) // Öffnet die Detailansicht für eine belegte Zelle
+            .onDisappear {
+                // Entferne Tastatur-Beobachter
+                NotificationCenter.default.removeObserver(self)
             }
-        }
-        
-        .alert("Hinweis", isPresented: $showInfo) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Auf dieser Startseite bitte die Klassennamen anlegen.")
-        }
+
+
+
+            .sheet(item: $activeSheet) { sheet in
+                switch sheet {
+                case .modal:
+                    ModalView(onSave: { className, freeInput in
+                        updateCell(
+                            row: selectedRow,
+                            column: selectedColumn,
+                            className: className,
+                            freeInput: freeInput
+                        )
+                    })
+                case .editing:
+                    EditableTableView(tableData: $tableData, rows: rows, columns: columns)
+                case .detail:
+                    if let content = selectedCellContent {
+                        ClassDetailView(cellContent: content)
+                    }
+                }
+            }
+
+            .alert("Hinweis", isPresented: $showInfo) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Auf dieser Startseite bitte die Klassennamen anlegen.")
+            }
         }
     }
-    // MARK: - Header Section
+
     @ViewBuilder
     private func headerSection() -> some View {
         HStack {
@@ -82,120 +103,142 @@ struct TableView: View {
             Text("Stundenplan")
                 .font(.largeTitle)
                 .bold()
-                .overlay(alignment: .topTrailing) {
-                    Button(action: {
-                        showInfo = true
-                    }) {
-                        Image(systemName: "info.circle")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    .offset(x: 20, y: 5)
-                    .buttonStyle(PlainButtonStyle())
-                }
             Spacer()
         }
         .padding(.top, 20)
     }
 
-    // MARK: - Grid Section
+    private func rowAndColumn(for index: Int) -> (row: Int, column: Int) {
+        let row = index / (columns + 1)  // Berechnet die Zeile
+        let column = index % (columns + 1)  // Berechnet die Spalte
+        return (row, column)  // Gibt ein Tuple mit Zeile und Spalte zurück
+    }
 
     @ViewBuilder
     private func gridSection() -> some View {
         LazyVGrid(columns: gridColumns, spacing: 5) {
             ForEach(0..<(rows + 1) * (columns + 1), id: \.self) { index in
-                let row = index / (columns + 1)
-                let column = index % (columns + 1)
-
-                if row == 0 && column > 0 {
-                    HeaderCell(text: weekdays[column - 1])
-                        .frame(height: 60) // Einheitliche Höhe
-                } else if column == 0 && row > 0 {
-                    FirstColumnCell(text: "\(row)")
-                        .frame(height: 60) // Einheitliche Höhe
-                } else if row > 0 && column > 0 {
-                    InteractiveCell(
-                        row: row,
-                        column: column,
-                        content: tableData[row - 1][column - 1],
-                        onTap: {
-                            handleCellTap(row: row, column: column)
-                        }
-                    )
-                } else {
-                    Text("")
-                        .frame(height: 60) // Einheitliche Höhe
-                }
+                let (row, column) = rowAndColumn(for: index)
+                gridCell(row: row, column: column) // Aufruf von gridCell
             }
         }
     }
 
-    private func isValidIndex(row: Int, column: Int) -> Bool {
-        return row > 0 && row <= rows && column > 0 && column <= columns
-    }
-
-    // MARK: - Modal Sheet
+    
     @ViewBuilder
-    private func modalSheet() -> some View {
-        ModalView(
-            row: selectedRow,
-            column: selectedColumn,
-            onSave: { className, room, subject, isSwitchOn, _ in // Ignoriere selectedHours
-                updateCell(
-                    row: selectedRow,
-                    column: selectedColumn,
-                    className: className,
-                    room: room,
-                    subject: subject,
-                    isSwitchOn: isSwitchOn
-                )
-            }
-        )
-    }
-
-    private func handleCellTap(row: Int, column: Int) {
-        guard isValidIndex(row: row, column: column) else {
-            print("Ungültiger Index: \(row), \(column)")
-            return
-        }
-
-        if let cell = tableData[row - 1][column - 1], cell.className != nil {
-            selectedCellContent = cell
-            showDetailView = true
+    private func gridCell(row: Int, column: Int) -> some View {
+        if row == 0 && column > 0 {
+            headerCell(for: column)
+        } else if column == 0 && row > 0 {
+            firstColumnCell(for: row)
+        } else if row > 0 && column > 0 {
+            contentCell(row: row, column: column)
         } else {
-            selectedRow = row
-            selectedColumn = column
-            showModal = true
+            Text("")
+                .frame(height: 60)
         }
     }
 
-    private func updateCell(
-        row: Int,
-        column: Int,
-        className: String?,
-        room: String? = nil,
-        subject: String? = nil,
-        isSwitchOn: Bool = false
-    ) {
-        guard isValidIndex(row: row, column: column) else {
-            print("Ungültiger Index: \(row), \(column)")
-            return
-        }
-
-        tableData[row - 1][column - 1] = CellContent(
-            className: className,
-            room: room,
-            subject: subject,
-            isSwitchOn: isSwitchOn
-        )
+    @ViewBuilder
+    private func headerCell(for column: Int) -> some View {
+        HeaderCell(text: weekdays[column - 1])
+            .frame(height: 60)
     }
 
-    // MARK: - Grid Columns Definition
+    @ViewBuilder
+    private func firstColumnCell(for row: Int) -> some View {
+        FirstColumnCell(text: FirstColumnCell.timeForRow(row))
+            .frame(height: 60)
+    }
+
+    @ViewBuilder
+    private func contentCell(row: Int, column: Int) -> some View {
+        if let cellContent = tableData[row - 1][column - 1] {
+            InteractiveCell(
+                row: row,
+                column: column,
+                content: cellContent,
+                onTap: {
+                    handleCellTap(row: row, column: column)
+                }
+            )
+        } else {
+            Rectangle()
+                .fill(Color.gray.opacity(0.1))
+                .frame(height: 60)
+                .overlay(
+                    Text("+")
+                        .foregroundColor(.gray)
+                        .font(.headline)
+                )
+                .onTapGesture {
+                    handleCellTap(row: row, column: column)
+                }
+        }
+    }
+
+
     var gridColumns: [GridItem] {
         var columnsArray: [GridItem] = [GridItem(.fixed(50), spacing: 5)]
         for _ in 1...columns {
             columnsArray.append(GridItem(.flexible(), spacing: 5))
         }
         return columnsArray
+    }
+
+    @ViewBuilder
+    private func modalSheet() -> some View {
+        ModalView(
+            onSave: { className, freeInput in
+                updateCell(
+                    row: selectedRow,
+                    column: selectedColumn,
+                    className: className,
+                    freeInput: freeInput
+                )
+            }
+        )
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private func handleCellTap(row: Int, column: Int) {
+        guard isValidIndex(row: row, column: column) else {
+            print("Fehler: Ungültiger Index bei [\(row - 1), \(column - 1)]")
+            return
+        }
+
+        if let cell = tableData[row - 1][column - 1], cell.className != nil {
+            print("Detailansicht öffnen für Zelle [\(row - 1), \(column - 1)] mit Inhalt: \(cell)")
+            selectedCellContent = cell
+            activeSheet = .detail
+           // showDetailView = true
+        } else {
+            print("Öffne Modal für Zelle [\(row), \(column)]")
+            selectedRow = row
+            selectedColumn = column
+            activeSheet = .modal
+          //  showModal = true
+        }
+    }
+
+    private func updateCell(row: Int, column: Int, className: String?, freeInput: String?) {
+        guard isValidIndex(row: row, column: column) else {
+            print("Fehler: Ungültiger Index [\(row), \(column)]")
+            return
+        }
+
+        print("Debug: Schreibe in Zelle [\(row), \(column)] - Klassenname: \(className ?? "Keine Klasse"), Notiz: \(freeInput ?? "Keine Notiz")")
+        tableData[row - 1][column - 1] = CellContent(
+            className: className,
+            freeInput: freeInput
+        )
+    }
+
+    private func isValidIndex(row: Int, column: Int) -> Bool {
+        let isValid = row > 0 && row <= rows && column > 0 && column <= columns
+        if !isValid {
+            print("Fehler: Index nicht gültig - row: \(row), column: \(column)")
+        }
+        return isValid
     }
 }

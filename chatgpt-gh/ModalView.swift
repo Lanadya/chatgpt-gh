@@ -1,143 +1,233 @@
-//
-//  ModalView.swift
-//  chatgpt-gh
-//
-//  Created by Nina Klee on 20.11.24.
-//
-
 import SwiftUI
 
 struct ModalView: View {
     @Environment(\.dismiss) var dismiss
 
-    let row: Int
-    let column: Int
+    @State private var className: String = ""
+    @State private var freeInput: String = "" // Zurück zu freeInput
+    @State private var showClassNameError: Bool = false
+    @FocusState private var focusedField: FocusField?
 
-    @State private var className: String = "" // Klassenname
-    @State private var room: String = "" // Raum (optional)
-    @State private var subject: String = "" // Fach (optional)
-    @State private var attachClassBook: Bool = false // Toggle-Status für Klassenbuch
-    @State private var selectedHours: [Int] = [] // Folgestunden-Auswahl
-    @State private var showError: Bool = false // Fehlerstatus
-    @State private var showInfo: Bool = false // Status für das Info-Popup
+    var onSave: (String, String) -> Void
 
-    var maxHours: Int = 4 // Maximale Anzahl der Folgestunden
-    var onSave: (String, String?, String?, Bool, [Int]) -> Void
+    enum FocusField {
+        case className
+        case freeInput
+    }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 15) {
-                // Klassenname mit Info-Symbol
-                HStack(spacing: 5) {
+        VStack(spacing: 20) {
+            // Überschrift
+            Text("Neue Klasse anlegen")
+                .font(.title2)
+                .fontWeight(.bold)
+                .multilineTextAlignment(.center)
+                .padding(.top, 20)
+
+            VStack(spacing: 30) {
+                Spacer()
+
+                // Klassenname
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Klassenname")
                         .font(.headline)
                         .bold()
-                        .foregroundColor(.red) // Optische Hervorhebung
-                    Button(action: {
-                        showInfo = true
-                    }) {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.red)
-                            .font(.headline)
-                    }
-                    .alert("Hinweis", isPresented: $showInfo) {
-                        Button("OK", role: .cancel) {}
-                    } message: {
-                        Text("Bitte einen Klassennamen eingeben. Dieser ist erforderlich, um die Daten zu speichern.")
-                    }
-                    Spacer()
-                }
-                .padding(.bottom, 2)
 
-                TextField("Klasse (z. B. 1A)", text: $className)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-                    .padding(.bottom, 15)
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            UIApplication.shared.sendAction(
-                                #selector(UIResponder.becomeFirstResponder),
-                                to: nil,
-                                from: nil,
-                                for: nil
-                            )
+                    TextField("Max. 8 Zeichen", text: $className)
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(
+                                    className.isEmpty ? Color.red : Color.blue,
+                                    lineWidth: 2
+                                )
+                        )
+                        .font(.title2)
+                        .focused($focusedField, equals: .className)
+                        .onChange(of: className) { newValue in
+                            if newValue.count > 8 {
+                                className = String(newValue.prefix(8))
+                            }
                         }
-                    }
-
-                // Optionale Angaben
-                VStack(spacing: 8) {
-                    Text("Optionale Angaben")
-                        .font(.subheadline)
-                        .bold()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    TextField("Raum (optional)", text: $room)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-
-                    TextField("Fach (optional)", text: $subject)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
-                .padding(.bottom, 15)
 
-                // Toggle für Klassenbuch
-                HStack {
-                    Text("Klassenbuch mitbringen")
+                // Notizen (freeInput)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Notizen (optional)")
                         .font(.subheadline)
-                        .bold()
-                    Spacer()
-                    Toggle("", isOn: $attachClassBook)
-                        .toggleStyle(SwitchToggleStyle(tint: .blue))
-                }
-                .padding(.bottom, 20)
 
-                // Speichern- und Abbrechen-Buttons
-                VStack(spacing: 10) {
-                    Button(action: {
-                        if className.isEmpty {
-                            showError = true
-                        } else {
-                            saveChanges()
+                    TextEditor(text: $freeInput)
+                        .frame(height: 40)
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.gray, lineWidth: 1)
+                        )
+                        .focused($focusedField, equals: .freeInput)
+                        .font(.body)
+                        .onChange(of: freeInput) { newValue in
+                            if newValue.count > 10 {
+                                freeInput = String(newValue.prefix(10))
+                            }
                         }
-                    }) {
-                        Text("Speichern")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(className.isEmpty ? Color.gray : Color.blue) // Deaktivieren bei leerem Klassennamen
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
-                            .disabled(className.isEmpty)
-                    }
-                    .alert("Fehler", isPresented: $showError) {
-                        Button("OK", role: .cancel) {}
-                    } message: {
-                        Text("Der Klassenname muss ausgefüllt werden.")
-                    }
-
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Text("Abbrechen")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.gray.opacity(0.2))
-                            .foregroundColor(.black)
-                            .cornerRadius(10)
-                    }
                 }
             }
-            .padding()
+
+            Spacer()
+
+            // Buttons
+            VStack(spacing: 12) {
+                Button(action: {
+                    if className.isEmpty {
+                        showClassNameError = true
+                    } else {
+                        onSave(className, freeInput)
+                        dismiss()
+                    }
+                }) {
+                    Text("Speichern")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(className.isEmpty ? Color.gray : Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                        .font(.headline)
+                }
+                .disabled(className.isEmpty)
+
+                Button(action: {
+                    dismiss()
+                }) {
+                    Text("Abbrechen")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .foregroundColor(.blue)
+                        .font(.subheadline)
+                }
+            }
+            .padding(.top, 20)
+        }
+        .padding(16)
+        .frame(maxWidth: 260)
+        .onAppear {
+            focusedField = .className
         }
     }
-
-    private func saveChanges() {
-        onSave(
-            className,
-            room.isEmpty ? nil : room,
-            subject.isEmpty ? nil : subject,
-            attachClassBook,
-            selectedHours
-        )
-        dismiss()
-    }
 }
+
+//
+//struct ModalView: View {
+//    @Environment(\.dismiss) var dismiss
+//
+//    @State private var className: String = ""
+//    @State private var notesInput: String = ""
+//    @State private var showClassNameError: Bool = false
+//    @FocusState private var focusedField: FocusField?
+//
+//    var onSave: (String, String) -> Void
+//
+//    enum FocusField {
+//        case className
+//        case notes
+//    }
+//
+//    var body: some View {
+//        VStack(spacing: 20) {
+//            // Überschrift
+//            Text("Neue Klasse anlegen")
+//                .font(.title2)
+//                .fontWeight(.bold)
+//                .multilineTextAlignment(.center)
+//                .padding(.top, 20)
+//
+//            VStack(spacing: 30) {
+//                Spacer()
+//
+//                // Klassenname
+//                VStack(alignment: .leading, spacing: 8) {
+//                    Text("Klassenname")
+//                        .font(.headline)
+//                        .bold()
+//
+//                    TextField("Max. 8 Zeichen", text: $className)
+//                        .padding(10)
+//                        .background(
+//                            RoundedRectangle(cornerRadius: 8)
+//                                .stroke(
+//                                    className.isEmpty ? Color.red : Color.blue,
+//                                    lineWidth: 2
+//                                )
+//                        )
+//                        .font(.title2)
+//                        .focused($focusedField, equals: .className)
+//                        .onChange(of: className) { newValue in
+//                            if newValue.count > 8 {
+//                                className = String(newValue.prefix(8))
+//                            }
+//                        }
+//
+//                    // Notizen
+//                    VStack(alignment: .leading, spacing: 8) {
+//                        Text("Notizen (optional)")
+//                            .font(.subheadline)
+//
+//                        TextEditor(text: $notesInput)
+//                            .frame(height: 40)
+//                            .padding(10)
+//                            .background(
+//                                RoundedRectangle(cornerRadius: 8)
+//                                    .stroke(Color.gray, lineWidth: 1)
+//                            )
+//                            .focused($focusedField, equals: .notes)
+//                            .font(.body)
+//                            .onChange(of: notesInput) { newValue in
+//                                if newValue.count > 10 {
+//                                    notesInput = String(newValue.prefix(10))
+//                                }
+//                            }
+//                    }
+//                }
+//
+//                Spacer()
+//
+//                // Buttons
+//                VStack(spacing: 12) {
+//                    Button(action: {
+//                        if className.isEmpty {
+//                            showClassNameError = true
+//                        } else {
+//                            onSave(className, notesInput)
+//                            dismiss()
+//                        }
+//                    }) {
+//                        Text("Speichern")
+//                            .frame(maxWidth: .infinity)
+//                            .padding()
+//                            .background(className.isEmpty ? Color.gray : Color.blue)
+//                            .foregroundColor(.white)
+//                            .cornerRadius(8)
+//                            .font(.headline)
+//                    }
+//                    .disabled(className.isEmpty)
+//
+//                    Button(action: {
+//                        dismiss()
+//                    }) {
+//                        Text("Abbrechen")
+//                            .frame(maxWidth: .infinity)
+//                            .padding()
+//                            .foregroundColor(.blue)
+//                            .font(.subheadline)
+//                    }
+//                }
+//                .padding(.top, 20)
+//            }
+//            .padding(16) // Einheitliches Padding
+//            .frame(maxWidth: 260) // Modalbreite
+//            .onAppear {
+//                focusedField = .className // Fokus auf Klassenname beim Öffnen
+//            }
+//        }
+//    }
+//}
+//
